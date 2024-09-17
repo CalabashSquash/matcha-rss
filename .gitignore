@@ -23,3 +23,8 @@ Cargo.lock
 # Added by cargo
 
 /target
+
+config.yaml
+
+# Markdown used for testing
+test.md

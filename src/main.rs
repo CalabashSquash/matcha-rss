@@ -1,10 +1,10 @@
-use serde::{Deserialize};
-use serde_yaml::{Error, Mapping, Sequence, Value};
-use std::io::Read;
-use std::{fs};
-use reqwest;
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
+use reqwest;
+use serde::Deserialize;
+use serde_yaml::{Mapping, Value};
+use std::fs;
+use std::io::Read;
 // use crate::rsss;
 
 const MAX_COUNT: i32 = 2;
@@ -12,15 +12,60 @@ const MAX_COUNT: i32 = 2;
 #[derive(Debug)]
 struct Item {
     url: String,
-    title: String
+    title: String,
+}
+#[derive(Debug)]
+struct FeedOutput {
+    items: Vec<Item>,
+    feed_name: String,
+}
+
+impl FeedOutput {
+    fn write_to_md(self: Self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut contents = format!("# {}\n", self.feed_name);
+        for item in self.items {
+            contents.push_str(&format!("- [{}]({})\n", item.title, item.url));
+        }
+
+        let contents = contents.as_bytes();
+        fs::write("test.md", contents)?;
+        Ok(())
+    }
+
 }
 
 fn parse_title(mut reader: Reader<&[u8]>) -> (Reader<&[u8]>, String) {
-    return (reader, String::from("FAKE TITLE"));
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e), // TODO don't panic but instead fail on just this feed.
+            Ok(Event::Text(t)) => {
+                return (reader, t.unescape().unwrap().to_string()); // TODO This can panic
+            }
+            Ok(Event::CData(cdata)) => {
+                let text = cdata.escape().unwrap();
+                return (reader, text.unescape().unwrap().to_string());
+            }
+            _ => panic!("No text in title"),
+        }
+    }
 }
 
+// TODO doesn't work if the link is of format <link href="..." />.
+// Only works if it's like <link>...</link>
 fn parse_url(mut reader: Reader<&[u8]>) -> (Reader<&[u8]>, String) {
-    return (reader, String::from("http://www.FAKE_url.com"));
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e), // TODO don't panic but instead fail on just this feed.
+            Ok(Event::Text(t)) => {
+                return (reader, t.unescape().unwrap().to_string()); // TODO This can panic
+            }
+            _ => {
+                panic!("No text in URL")
+            }
+        }
+    }
 }
 
 fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
@@ -31,42 +76,35 @@ fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e), // TODO don't panic but instead fail on just this feed.
             // errors the loop when reaching end of file
-            Ok(Event::Eof) => panic!("Error"),// TODO don't panic but instead fail on just this feed.
-            Ok(Event::Start(e)) => {
-                match e.name().as_ref() {
-                    b"title" => {
-                        let res = parse_title(reader);
-                        reader = res.0;
-                        title = res.1;
-                    }
-                    b"link" => {
-                        let res = parse_url(reader);
-                        reader = res.0;
-                        url = res.1;
-                    }
-                    _ => ()
+            Ok(Event::Eof) => panic!("Error"), // TODO don't panic but instead fail on just this feed.
+            Ok(Event::Start(e)) => match e.name().as_ref() {
+                b"title" => {
+                    let res = parse_title(reader);
+                    reader = res.0;
+                    title = res.1;
                 }
-            }
-            Ok(Event::Text(_)) => {
-
-            }
-            Ok(Event::End(e)) => {
-                match e.name().as_ref() {
-                    b"item" => break,
-                    _ => ()
+                b"link" => {
+                    let res = parse_url(reader);
+                    reader = res.0;
+                    url = res.1;
                 }
-            }
-            _ => ()
+                _ => (),
+            },
+            Ok(Event::Text(_)) => {}
+            Ok(Event::End(e)) => match e.name().as_ref() {
+                b"item" => break,
+                _ => (),
+            },
+            _ => (),
         }
     }
 
-    (reader, Item {
-        url,
-        title
-    })
+    (reader, Item { url, title })
 }
 
-fn example_feed(url: String) -> Result<(), Box<dyn std::error::Error>> {
+// TODO state machine in ascii
+
+fn parse_feed(url: String) -> Result<FeedOutput, Box<dyn std::error::Error>> {
     let buf = &mut Default::default();
     let content = reqwest::blocking::get(url)?.read_to_string(buf)?;
     let mut reader = Reader::from_str(buf);
@@ -78,6 +116,7 @@ fn example_feed(url: String) -> Result<(), Box<dyn std::error::Error>> {
     let mut txt = Vec::new();
     let mut buf = Vec::new();
     let mut items: Vec<Item> = Vec::new();
+    let mut feed_name: String = "".into();
 
     // The `Reader` does not implement `Iterator` because it outputs borrowed data (`Cow`s)
     loop {
@@ -85,7 +124,7 @@ fn example_feed(url: String) -> Result<(), Box<dyn std::error::Error>> {
         // when the input is a &str or a &[u8], we don't actually need to use another
         // buffer, we could directly call `reader.read_event()`
         match reader.read_event_into(&mut buf) {
-            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),// TODO don't panic but instead fail on just this feed.
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e), // TODO don't panic but instead fail on just this feed.
             // exits the loop when reaching end of file
             Ok(Event::Eof) => break,
 
@@ -95,11 +134,16 @@ fn example_feed(url: String) -> Result<(), Box<dyn std::error::Error>> {
                         let res = parse_item(reader);
                         reader = res.0;
                         items.push(res.1);
-                    },
+                    }
                     // b"item" => println!("attributes values: {:?}",
                     //                     e.attributes().map(|a| a.unwrap().value)
                     //                     .collect::<Vec<_>>()),
                     b"tag2" => count += 1,
+                    b"title" => {
+                        let res = parse_title(reader);
+                        reader = res.0;
+                        feed_name = res.1;
+                    }
                     _ => println!("YEET: {:?}", e.name()),
                 }
             }
@@ -107,7 +151,7 @@ fn example_feed(url: String) -> Result<(), Box<dyn std::error::Error>> {
                 println!("text! {:?}", e.unescape());
                 txt.push(e.unescape().unwrap().into_owned());
                 // println!("TXT: {:?}", txt);
-            },
+            }
 
             // There are several other `Event`s we do not consider here
             _ => (),
@@ -115,32 +159,34 @@ fn example_feed(url: String) -> Result<(), Box<dyn std::error::Error>> {
         // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
         // buf.clear();
     }
-    println!("items: {:?}", items);
-    Ok(())
+    Ok(FeedOutput { items, feed_name })
 }
 
 #[derive(Debug)]
-struct Feed{
+struct FeedInput {
     url: String,
-    list_length: i32
+    list_length: i32,
 }
 
 #[derive(Debug)]
-struct Feeds {
-    feeds: Vec<Feed>
+struct FeedInputs {
+    feeds: Vec<FeedInput>,
 }
 
-impl Feed {
+impl FeedInput {
     fn from(url: String, list_length: i32) -> Self {
-        Feed { url: url, list_length: list_length }
+        FeedInput {
+            url: url,
+            list_length: list_length,
+        }
     }
 }
 
-impl From<&Mapping> for Feeds {
-    fn from(value: &Mapping) -> Feeds {
+impl From<&Mapping> for FeedInputs {
+    fn from(value: &Mapping) -> FeedInputs {
         // let ding = value["feeds"]; <--- QUESTION: why can't you move?
         let ding = &value["feeds"];
-        
+
         let urls = match ding {
             serde_yaml::Value::Sequence(s) => s,
             _ => {
@@ -149,7 +195,7 @@ impl From<&Mapping> for Feeds {
             }
         };
 
-        let mut feeds: Vec<Feed> = vec![];
+        let mut feeds: Vec<FeedInput> = vec![];
         for url in urls {
             let url_and_length = match url {
                 serde_yaml::Value::String(s) => s.split(" ").collect::<Vec<&str>>(),
@@ -166,19 +212,22 @@ impl From<&Mapping> for Feeds {
             match str::parse(url_and_length[1]) {
                 Ok(l) => {
                     feed_length = l;
-                },
+                }
                 Err(e) => {
                     print!("Invalid feed length: {}. Error: {}", url_and_length[1], e);
                     continue;
                 }
             }
 
-            feeds.push(Feed {url: url_and_length[0].to_string(), list_length: feed_length});
+            feeds.push(FeedInput {
+                url: url_and_length[0].to_string(),
+                list_length: feed_length,
+            });
         }
 
         // println!("{:?}", ding);
         println!("{:?}", feeds);
-        Feeds {feeds: feeds }
+        FeedInputs { feeds: feeds }
     }
 }
 
@@ -193,16 +242,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match value {
         serde_yaml::Value::Mapping(m) => {
             mapping = m;
-        },
+        }
         _ => {
             return Err("Expected mapping YAML format".into());
         }
     }
-    // let feeds: Vec<Feed> = 
-    let feedyBoy = Feeds::from(&mapping);
-    for feed in feedyBoy.feeds {
-        println!("{:?}", example_feed(feed.url)?);
+    // let feeds: Vec<Feed> =
+    let feedy_boy = FeedInputs::from(&mapping);
+    for feed in feedy_boy.feeds {
+        let output = parse_feed(feed.url)?;
+        // println!("{:#?}", parse_feed(feed.url)?);
+        output.write_to_md()?;
+        
     }
+
 
     Ok(())
 }
