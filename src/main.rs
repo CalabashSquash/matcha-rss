@@ -1,16 +1,122 @@
 use serde::{Deserialize};
 use serde_yaml::{Error, Mapping, Sequence, Value};
+use std::io::Read;
 use std::{fs};
 use reqwest;
-use rss::Channel;
-use crate::rsss;
+use quick_xml::events::Event;
+use quick_xml::reader::Reader;
+// use crate::rsss;
 
-fn example_feed(url: String) -> Result<Channel, Box<dyn std::error::Error>> {
-    let content = reqwest::blocking::get(url)?.bytes()?;
+const MAX_COUNT: i32 = 2;
+
+#[derive(Debug)]
+struct Item {
+    url: String,
+    title: String
+}
+
+fn parse_title(mut reader: Reader<&[u8]>) -> (Reader<&[u8]>, String) {
+    return (reader, String::from("FAKE TITLE"));
+}
+
+fn parse_url(mut reader: Reader<&[u8]>) -> (Reader<&[u8]>, String) {
+    return (reader, String::from("http://www.FAKE_url.com"));
+}
+
+fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
+    let mut buf = Vec::new();
+    let mut title = String::default();
+    let mut url = String::default();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e), // TODO don't panic but instead fail on just this feed.
+            // errors the loop when reaching end of file
+            Ok(Event::Eof) => panic!("Error"),// TODO don't panic but instead fail on just this feed.
+            Ok(Event::Start(e)) => {
+                match e.name().as_ref() {
+                    b"title" => {
+                        let res = parse_title(reader);
+                        reader = res.0;
+                        title = res.1;
+                    }
+                    b"link" => {
+                        let res = parse_url(reader);
+                        reader = res.0;
+                        url = res.1;
+                    }
+                    _ => ()
+                }
+            }
+            Ok(Event::Text(_)) => {
+
+            }
+            Ok(Event::End(e)) => {
+                match e.name().as_ref() {
+                    b"item" => break,
+                    _ => ()
+                }
+            }
+            _ => ()
+        }
+    }
+
+    (reader, Item {
+        url,
+        title
+    })
+}
+
+fn example_feed(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let buf = &mut Default::default();
+    let content = reqwest::blocking::get(url)?.read_to_string(buf)?;
+    let mut reader = Reader::from_str(buf);
+    reader.trim_text(true);
     println!("content: {:?}", content);
-    let channel = Channel::read_from(&content[..])?;
-    let channel2: Channel == rss::
-    Ok(channel)
+    // println!("buf: {:?}", buf);
+
+    let mut count = 0;
+    let mut txt = Vec::new();
+    let mut buf = Vec::new();
+    let mut items: Vec<Item> = Vec::new();
+
+    // The `Reader` does not implement `Iterator` because it outputs borrowed data (`Cow`s)
+    loop {
+        // NOTE: this is the generic case when we don't know about the input BufRead.
+        // when the input is a &str or a &[u8], we don't actually need to use another
+        // buffer, we could directly call `reader.read_event()`
+        match reader.read_event_into(&mut buf) {
+            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e),// TODO don't panic but instead fail on just this feed.
+            // exits the loop when reaching end of file
+            Ok(Event::Eof) => break,
+
+            Ok(Event::Start(e)) => {
+                match e.name().as_ref() {
+                    b"item" | b"entry" => {
+                        let res = parse_item(reader);
+                        reader = res.0;
+                        items.push(res.1);
+                    },
+                    // b"item" => println!("attributes values: {:?}",
+                    //                     e.attributes().map(|a| a.unwrap().value)
+                    //                     .collect::<Vec<_>>()),
+                    b"tag2" => count += 1,
+                    _ => println!("YEET: {:?}", e.name()),
+                }
+            }
+            Ok(Event::Text(e)) => {
+                println!("text! {:?}", e.unescape());
+                txt.push(e.unescape().unwrap().into_owned());
+                // println!("TXT: {:?}", txt);
+            },
+
+            // There are several other `Event`s we do not consider here
+            _ => (),
+        }
+        // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
+        // buf.clear();
+    }
+    println!("items: {:?}", items);
+    Ok(())
 }
 
 #[derive(Debug)]
