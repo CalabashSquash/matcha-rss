@@ -153,6 +153,10 @@ pub fn parse_feed(url: String) -> Result<FeedOutput, Box<dyn std::error::Error>>
                         let res = parse_item(reader);
                         reader = res.0;
                         items.push(res.1);
+                        count += 1;
+                        if count >= MAX_COUNT {
+                            break;
+                        }
                     }
                     b"tag2" => count += 1,
                     b"title" => {
