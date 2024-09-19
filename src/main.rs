@@ -11,8 +11,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = fs::read_to_string("test/config.yaml")?;
     let de = serde_yaml::Deserializer::from_str(&input);
     let value = Value::deserialize(de)?;
-    println!("{:?}", value);
-    println!("{:?}", value["feeds"][0]);
 
     let mapping: Mapping;
     match value {
@@ -33,5 +31,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         digest = build_digest(digest, feed);
     }
     write_digest(digest, String::from("test2.md"))?;
+    println!("Done");
     Ok(())
 }

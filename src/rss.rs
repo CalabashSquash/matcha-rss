@@ -80,14 +80,11 @@ fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
                     title = res.1;
                 }
                 b"link" => {
-                    println!("LINK {:?}", e.into_owned());
                     let res = parse_url(reader);
                     reader = res.0;
                     url = res.1;
                 }
-                other => {
-                    println!("start: {}", str::from_utf8(other).unwrap());
-                }
+                _ => ()
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
                 b"link" => {
