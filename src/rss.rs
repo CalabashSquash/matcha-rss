@@ -1,7 +1,9 @@
 use core::str;
-use reqwest;
 use quick_xml::{events::Event, Reader};
+use reqwest;
 use std::io::Read;
+
+use crate::yaml::FeedInput;
 
 const MAX_COUNT: i32 = 2;
 
@@ -25,7 +27,6 @@ impl FeedOutput {
 
         contents
     }
-
 }
 
 pub fn parse_title(mut reader: Reader<&[u8]>) -> (Reader<&[u8]>, String) {
@@ -45,8 +46,9 @@ pub fn parse_title(mut reader: Reader<&[u8]>) -> (Reader<&[u8]>, String) {
     }
 }
 
-// TODO doesn't work if the link is of format <link href="..." />.
+// doesn't work if the link is of format <link href="..." />.
 // Only works if it's like <link>...</link>
+// The former case is instead caught by the `Event::Empty` variant (<foo/> is called an "empty" tag)
 fn parse_url(mut reader: Reader<&[u8]>) -> (Reader<&[u8]>, String) {
     let mut buf = Vec::new();
     loop {
@@ -78,42 +80,51 @@ fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
                     title = res.1;
                 }
                 b"link" => {
-                    println!("attributes values: {:?}",
-                                e.attributes().map(|a| a.unwrap().value)
-                                .collect::<Vec<_>>());
+                    // Even if there is an "Event::Empty" tag (<link ... />), it is still possible for
+                    // it to be parsed as an `Event::Start` tag............
+                    match e
+                        .attributes()
+                        .find(|x| x.as_ref().unwrap().key == quick_xml::name::QName(b"href"))
+                    {
+                        Some(x) => {
+                            url = String::from(str::from_utf8(&x.unwrap().value).unwrap());
+                            continue;
+                        }
+                        None => {
+                            println!("NONE")
+                        }
+                    }
+                    println!("LINK {:?}", e.into_owned());
                     let res = parse_url(reader);
                     reader = res.0;
                     url = res.1;
                 }
                 other => {
                     println!("start: {}", str::from_utf8(other).unwrap());
-                },
+                }
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
                 b"link" => {
-                    match e.attributes().find(|x| x.as_ref().unwrap().key.eq(&quick_xml::name::QName(b"href"))) {
+                    match e
+                        .attributes()
+                        .find(|x| x.as_ref().unwrap().key.eq(&quick_xml::name::QName(b"href")))
+                    {
                         Some(r) => match r {
                             Ok(a) => {
                                 url = String::from_utf8(a.value.into_owned()).unwrap();
-                                println!("URL SET====");
-                            },
-                            Err(e) => panic!("Error finding href")
-                        }
-                        None => ()
+                            }
+                            Err(_) => panic!("Error finding href"),
+                        },
+                        None => (),
                     }
                 }
-                _ => ()
-            }
-            Ok(Event::Text(text)) => {
-                println!("text: {:?}", text);
-            }
+                _ => (),
+            },
             Ok(Event::End(e)) => match e.name().as_ref() {
                 b"item" | b"entry" => break,
                 _ => (),
             },
-            Ok(e) => {
-                println!("other {:?}", e);
-            },
+            Ok(_) => (),
         }
     }
 
@@ -121,17 +132,17 @@ fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
 }
 
 // TODO state machine in ascii
+// TODO verbose option which prints description or something.
+// TODO image for feeds
+// TODO weather
 
-pub fn parse_feed(url: String) -> Result<FeedOutput, Box<dyn std::error::Error>> {
+pub fn parse_feed(feed: FeedInput) -> Result<FeedOutput, Box<dyn std::error::Error>> {
     let buf = &mut Default::default();
-    let content = reqwest::blocking::get(url)?.read_to_string(buf)?;
+    reqwest::blocking::get(feed.url)?.read_to_string(buf)?;
     let mut reader = Reader::from_str(buf);
     reader.trim_text(true);
-    println!("content: {:?}", content);
-    // println!("buf: {:?}", buf);
 
-    let mut count = 0;
-    let mut txt = Vec::new();
+    let mut item_count = 0;
     let mut buf = Vec::new();
     let mut items: Vec<Item> = Vec::new();
     let mut feed_name: String = "".into();
@@ -146,38 +157,26 @@ pub fn parse_feed(url: String) -> Result<FeedOutput, Box<dyn std::error::Error>>
             // exits the loop when reaching end of file
             Ok(Event::Eof) => break,
 
-            Ok(Event::Start(e)) => {
-                match e.name().as_ref() {
-                    b"item" | b"entry" => {
-                        println!("PARSING ENTRY: {:?}", e.name().as_ref());
-                        let res = parse_item(reader);
-                        reader = res.0;
-                        items.push(res.1);
-                        count += 1;
-                        if count >= MAX_COUNT {
-                            break;
-                        }
+            Ok(Event::Start(e)) => match e.name().as_ref() {
+                b"item" | b"entry" => {
+                    let res = parse_item(reader);
+                    reader = res.0;
+                    items.push(res.1);
+                    item_count += 1;
+                    if item_count >= feed.list_length {
+                        break;
                     }
-                    b"tag2" => count += 1,
-                    b"title" => {
-                        let res = parse_title(reader);
-                        reader = res.0;
-                        feed_name = res.1;
-                    }
-                    _ => println!("YEET: {:?}", e.name()),
                 }
-            }
-            Ok(Event::Text(e)) => {
-                println!("text! {:?}", e.unescape());
-                txt.push(e.unescape().unwrap().into_owned());
-                // println!("TXT: {:?}", txt);
-            }
-
+                b"title" => {
+                    let res = parse_title(reader);
+                    reader = res.0;
+                    feed_name = res.1;
+                }
+                _ => (),
+            },
             // There are several other `Event`s we do not consider here
             _ => (),
         }
-        // if we don't keep a borrow elsewhere, we can clear the buffer to keep memory usage low
-        // buf.clear();
     }
     Ok(FeedOutput { items, feed_name })
 }
