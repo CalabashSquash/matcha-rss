@@ -1,6 +1,3 @@
 feeds:
   - https://xkcd.com/rss.xml 3
-yort:
-  - https://xkcd.com/atom.xml 5
   - https://www.youtube.com/feeds/videos.xml?channel_id=UCSp-OaMpsO8K0KkOqyBl7_w 2
-  - https://strategizeyourcareer.com/feed 3
