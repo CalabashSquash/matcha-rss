@@ -117,13 +117,6 @@ fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
     (reader, Item { url, title })
 }
 
-// TODO state machine explanation of RSS parsing in ascii
-// TODO verbose option which prints description or something.
-// TODO image for feeds
-// TODO weather
-// TODO chatgpt summary
-// TODO Don't show previous
-
 pub fn parse_feed(feed: FeedInput) -> Result<FeedOutput, Box<dyn std::error::Error>> {
     let buf = &mut Default::default();
     reqwest::blocking::get(feed.url)?.read_to_string(buf)?;
