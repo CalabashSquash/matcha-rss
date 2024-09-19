@@ -80,20 +80,6 @@ fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
                     title = res.1;
                 }
                 b"link" => {
-                    // Even if there is an "Event::Empty" tag (<link ... />), it is still possible for
-                    // it to be parsed as an `Event::Start` tag............
-                    match e
-                        .attributes()
-                        .find(|x| x.as_ref().unwrap().key == quick_xml::name::QName(b"href"))
-                    {
-                        Some(x) => {
-                            url = String::from(str::from_utf8(&x.unwrap().value).unwrap());
-                            continue;
-                        }
-                        None => {
-                            println!("NONE")
-                        }
-                    }
                     println!("LINK {:?}", e.into_owned());
                     let res = parse_url(reader);
                     reader = res.0;

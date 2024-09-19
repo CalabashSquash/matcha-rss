@@ -1,76 +1,11 @@
+use matcha_rss::{
+    digest::{build_digest, write_digest},
+    rss::parse_feed,
+    yaml::FeedInputs,
+};
 use serde::Deserialize;
 use serde_yaml::{Mapping, Value};
 use std::fs;
-use matcha_rss::{digest::{build_digest, write_digest}, rss::parse_feed};
-
-#[derive(Debug)]
-struct FeedInput {
-    url: String,
-    list_length: i32,
-}
-
-#[derive(Debug)]
-struct FeedInputs {
-    feeds: Vec<FeedInput>,
-}
-
-impl FeedInput {
-    fn from(url: String, list_length: i32) -> Self {
-        FeedInput {
-            url: url,
-            list_length: list_length,
-        }
-    }
-}
-
-impl From<&Mapping> for FeedInputs {
-    fn from(value: &Mapping) -> FeedInputs {
-        // let ding = value["feeds"]; <--- QUESTION: why can't you move?
-        let ding = &value["feeds"];
-
-        let urls = match ding {
-            serde_yaml::Value::Sequence(s) => s,
-            _ => {
-                println!("feed list invalid");
-                &vec![]
-            }
-        };
-
-        let mut feeds: Vec<FeedInput> = vec![];
-        for url in urls {
-            let url_and_length = match url {
-                serde_yaml::Value::String(s) => s.split(" ").collect::<Vec<&str>>(),
-                _ => {
-                    continue;
-                }
-            };
-
-            if url_and_length.len() != 2 {
-                println!("feed {:?} invalid", url);
-                continue;
-            }
-            let feed_length: i32;
-            match str::parse(url_and_length[1]) {
-                Ok(l) => {
-                    feed_length = l;
-                }
-                Err(e) => {
-                    print!("Invalid feed length: {}. Error: {}", url_and_length[1], e);
-                    continue;
-                }
-            }
-
-            feeds.push(FeedInput {
-                url: url_and_length[0].to_string(),
-                list_length: feed_length,
-            });
-        }
-
-        // println!("{:?}", ding);
-        println!("{:?}", feeds);
-        FeedInputs { feeds: feeds }
-    }
-}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = fs::read_to_string("test/config.yaml")?;
@@ -91,8 +26,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let feeds: Vec<Feed> =
     let feedy_boy = FeedInputs::from(&mapping);
     let mut digest = String::new();
+
     for feed in feedy_boy.feeds {
-        let feed = parse_feed(feed.url)?;
+        let feed = parse_feed(feed)?;
         // println!("{:#?}", parse_feed(feed.url)?);
         digest = build_digest(digest, feed);
     }
