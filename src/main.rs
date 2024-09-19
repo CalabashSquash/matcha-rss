@@ -1,11 +1,7 @@
-use quick_xml::events::Event;
-use quick_xml::reader::Reader;
 use serde::Deserialize;
 use serde_yaml::{Mapping, Value};
 use std::fs;
-use matcha_rss::parse_feed; // QUESTION: How does it get matcha_rss? This doesn't appear anywhere else in the repo
-
-const MAX_COUNT: i32 = 2;
+use matcha_rss::{digest::{build_digest, write_digest}, rss::parse_feed};
 
 #[derive(Debug)]
 struct FeedInput {
@@ -94,13 +90,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     // let feeds: Vec<Feed> =
     let feedy_boy = FeedInputs::from(&mapping);
+    let mut digest = String::new();
     for feed in feedy_boy.feeds {
-        let output = parse_feed(feed.url)?;
+        let feed = parse_feed(feed.url)?;
         // println!("{:#?}", parse_feed(feed.url)?);
-        output.write_to_md()?;
-        
+        digest = build_digest(digest, feed);
     }
-
-
+    write_digest(digest, String::from("test2.md"))?;
     Ok(())
 }
