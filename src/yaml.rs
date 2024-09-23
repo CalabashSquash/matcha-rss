@@ -1,12 +1,13 @@
 use serde_yaml::Mapping;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FeedInput {
     pub url: String,
     pub list_length: i32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FeedInputs {
     pub feeds: Vec<FeedInput>,
 }
