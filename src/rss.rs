@@ -19,7 +19,7 @@ pub struct FeedOutput {
 }
 
 impl FeedOutput {
-    pub fn feed_digest(self: Self) -> String {
+    pub fn feed_digest(self) -> String {
         let mut contents = format!("# {}\n", self.feed_name);
         for item in self.items {
             contents.push_str(&format!("- [{}]({})\n", item.title, item.url));
@@ -29,37 +29,33 @@ impl FeedOutput {
     }
 }
 
-pub fn parse_title(mut reader: Reader<&[u8]>) -> (Reader<&[u8]>, String) {
+pub fn parse_title(reader: &mut Reader<&[u8]>) -> String {
     let mut buf = Vec::new();
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e), // TODO don't panic but instead fail on just this feed.
-            Ok(Event::Text(t)) => {
-                return (reader, t.unescape().unwrap().to_string()); // TODO This can panic
-            }
-            Ok(Event::CData(cdata)) => {
-                let text = cdata.escape().unwrap();
-                return (reader, text.unescape().unwrap().to_string());
-            }
-            _ => panic!("No text in title"),
+    match reader.read_event_into(&mut buf) {
+        Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e), // TODO don't panic but instead fail on just this feed.
+        Ok(Event::Text(t)) => {
+            return t.unescape().unwrap().to_string(); // TODO This can panic
         }
+        Ok(Event::CData(cdata)) => {
+            let text = cdata.escape().unwrap();
+            return text.unescape().unwrap().to_string();
+        }
+        _ => panic!("No text in title"),
     }
 }
 
 // doesn't work if the link is of format <link href="..." />.
 // Only works if it's like <link>...</link>
 // The former case is instead caught by the `Event::Empty` variant (<foo/> is called an "empty" tag)
-fn parse_url(mut reader: Reader<&[u8]>) -> (Reader<&[u8]>, String) {
+fn parse_url(reader: &mut Reader<&[u8]>) -> String {
     let mut buf = Vec::new();
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e), // TODO don't panic but instead fail on just this feed.
-            Ok(Event::Text(t)) => {
-                return (reader, t.unescape().unwrap().to_string()); // TODO This can panic
-            }
-            _ => {
-                panic!("No text in URL")
-            }
+    match reader.read_event_into(&mut buf) {
+        Err(e) => panic!("Error at position {}: {:?}", reader.buffer_position(), e), // TODO don't panic but instead fail on just this feed.
+        Ok(Event::Text(t)) => {
+            return t.unescape().unwrap().to_string(); // TODO This can panic
+        }
+        _ => {
+            panic!("No text in URL")
         }
     }
 }
@@ -75,17 +71,16 @@ fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
             Ok(Event::Eof) => panic!("Error"), // TODO don't panic but instead fail on just this feed.
             Ok(Event::Start(e)) => match e.name().as_ref() {
                 b"title" => {
-                    let res = parse_title(reader);
-                    reader = res.0;
-                    title = res.1;
+                    let res = parse_title(&mut reader);
+                    // reader = res.0;
+                    title = res;
                 }
                 b"link" => {
-                    let res = parse_url(reader);
-                    reader = res.0;
-                    url = res.1;
+                    url = parse_url(&mut reader);
                 }
                 _ => ()
             },
+            // <link href=... />
             Ok(Event::Empty(e)) => match e.name().as_ref() {
                 b"link" => {
                     match e
@@ -146,9 +141,9 @@ pub fn parse_feed(feed: FeedInput) -> Result<FeedOutput, Box<dyn std::error::Err
                     }
                 }
                 b"title" => {
-                    let res = parse_title(reader);
-                    reader = res.0;
-                    feed_name = res.1;
+                    let res = parse_title(&mut reader);
+                    // reader = res.0;
+                    feed_name = res;
                 }
                 _ => (),
             },
