@@ -1,9 +1,7 @@
 use std::fs;
 
 use matcha_rss::{
-    digest::{build_rss_digest, write_digest},
-    rss::parse_feed,
-    yaml::FeedInputs,
+    digest::{build_rss_digest, write_digest}, rss::parse_feed, weather::{build_weather_digest, get_weather_forecast}, yaml::FeedInputs
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,6 +10,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{:?}", feedy_boy);
 
     let mut digest = String::new();
+
+    let weather = get_weather_forecast();
+    build_weather_digest(&mut digest, weather);
 
     for feed in feedy_boy.feeds {
         let feed = parse_feed(feed)?;
