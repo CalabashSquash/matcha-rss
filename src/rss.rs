@@ -60,7 +60,7 @@ fn parse_url(reader: &mut Reader<&[u8]>) -> String {
     }
 }
 
-fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
+fn parse_item<'a>(reader: &mut Reader<&'a [u8]>) -> Item {
     let mut buf = Vec::new();
     let mut title = String::default();
     let mut url = String::default();
@@ -71,12 +71,12 @@ fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
             Ok(Event::Eof) => panic!("Error"), // TODO don't panic but instead fail on just this feed.
             Ok(Event::Start(e)) => match e.name().as_ref() {
                 b"title" => {
-                    let res = parse_title(&mut reader);
+                    let res = parse_title(reader);
                     // reader = res.0;
                     title = res;
                 }
                 b"link" => {
-                    url = parse_url(&mut reader);
+                    url = parse_url(reader);
                 }
                 _ => ()
             },
@@ -106,7 +106,7 @@ fn parse_item<'a>(mut reader: Reader<&'a [u8]>) -> (Reader<&'a [u8]>, Item) {
         }
     }
 
-    (reader, Item { url, title })
+    Item { url, title }
 }
 
 pub fn parse_feed(feed: FeedInput) -> Result<FeedOutput, Box<dyn std::error::Error>> {
@@ -132,9 +132,8 @@ pub fn parse_feed(feed: FeedInput) -> Result<FeedOutput, Box<dyn std::error::Err
 
             Ok(Event::Start(e)) => match e.name().as_ref() {
                 b"item" | b"entry" => {
-                    let res = parse_item(reader);
-                    reader = res.0;
-                    items.push(res.1);
+                    let res = parse_item(&mut reader);
+                    items.push(res);
                     item_count += 1;
                     if item_count >= feed.list_length {
                         break;
