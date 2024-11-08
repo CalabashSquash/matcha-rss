@@ -3,8 +3,8 @@ pub struct WeatherSummary {
 }
 
 pub fn get_weather_forecast() -> WeatherSummary {
-    WeatherSummary {temperature: 3.}
+    WeatherSummary { temperature: 3. }
 }
-pub fn build_weather_digest(digest: &mut String, weather: WeatherSummary) {
-
+pub fn build_weather_digest(weather: WeatherSummary) -> String {
+    String::new()
 }

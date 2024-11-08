@@ -78,7 +78,7 @@ fn parse_item<'a>(reader: &mut Reader<&'a [u8]>) -> Item {
                 b"link" => {
                     url = parse_url(reader);
                 }
-                _ => ()
+                _ => (),
             },
             // <link href=... />
             Ok(Event::Empty(e)) => match e.name().as_ref() {
